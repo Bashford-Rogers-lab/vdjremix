@@ -17,12 +17,9 @@ VDJ-REMIX implements a **network-based modularisation framework**, inspired by W
   Pairwise correlations are estimated using repeated subsampling of shared non-missing observations, avoiding bias introduced by fully imputed matrices.
 
 - **Automated, interpretable module discovery**  
-  Features are grouped into biologically coherent modules using hierarchical clustering with Dynamic Tree Cut.
+  Features are grouped into biologically coherent modules.
 
-- **Module summarisation via eigengenes**  
-  Each module is summarised by its first principal component (PC1), enabling downstream association, stratification, and longitudinal analyses.
-
-- **Explicit focus on interpretability**  
+- **Interpretable module summarisation**  
   Modules are designed to be sparse, internally coherent, and directly linkable to immunological mechanisms.
 
 ---
@@ -33,7 +30,7 @@ VDJ-REMIX is under active development and can be installed from GitHub:
 
 ```r
 # install.packages("devtools")
-devtools::install_github("sakinaamin/VDJ-REMIX")
+devtools::install_github("sakinaamin/vdjremix")
 library(vdjremix)
 data(example_airr_features)
 dim(example_airr_features)
@@ -51,7 +48,7 @@ res <- run_vdjremix(
 
 #key outputs
 res$modules            # feature modules
-res$eigengenes         # module eigengenes (PC1)
+res$eigengenes         # module eigengenes 
 res$variance_explained # variance explained by each module
 res$loadings           # feature contributions within modules
 
