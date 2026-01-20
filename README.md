@@ -30,7 +30,7 @@ VDJ-REMIX is under active development and can be installed from GitHub:
 
 ```r
 # install.packages("devtools")
-devtools::install_github("sakinaamin/vdjremix")
+devtools::install_github("Bashford-Rogers-lab/vdjremix")
 library(vdjremix)
 data(example_airr_features)
 dim(example_airr_features)
