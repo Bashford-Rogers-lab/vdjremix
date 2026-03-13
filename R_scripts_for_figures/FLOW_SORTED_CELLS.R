@@ -1,68 +1,80 @@
-######1. Schematic
-#####2. PCA 
-Draw_box_plot<-function(box,x,width,c,lwd,line_col){
-  segments(x, box[2], x, box[3], col = line_col,lwd =lwd)
-  segments(x-(width/2), box[2], x+(width/2), box[2], col = line_col,lwd =lwd)
-  segments(x-(width/2), box[3], x+(width/2), box[3], col = line_col,lwd =lwd)
-  rect(x-width, box[4], x+width, box[5], col = c,lwd =lwd, border = line_col)
-  segments(x-width, box[1], x+width, box[1], col = line_col,lwd=2*lwd)}
-Means_factor = function(factor, x){
-  m = NULL
-  for(i1 in c(1:length(levels(factor)))){
-    x1 = x[which(factor==levels(factor)[i1])]
-    x1 = x1[which(x1!=-1)]
-    m = c(m, mean(x1))}
-  return(m)}
-Medians_factor = function(factor, x){
-  m = NULL
-  for(i1 in c(1:length(levels(factor)))){
-    x1 = x[which(factor==levels(factor)[i1])]
-    x1 = x1[which(x1!=-1)]
-    m = c(m, median(x1))}
-  return(m)}
-concat = function(v) {
-  res = ""
-  for (i in 1:length(v)){res = paste0(res,v[i])}
-  res
+# Publication-ready analysis script for FLOW Figure 4
+# Panel A (schematic) is not generated in R here.
+# This script covers panel B (PCA-style sample projection) and panel C (genotype-by-population heatmap).
+
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+  library(RColorBrewer)
+  library(labdsv)
+  library(readr)
+  library(vdjremix)
+})
+
+set.seed(1974)
+
+
+files <- list(
+  eigenvectors = file.path(base_dir, "Eigenvectors_BCR_FLOW_BCR.txt"),
+  metadata = file.path(base_dir, "File information.txt")
+)
+
+output_files <- list(
+  pca_plot = file.path(base_dir, "PCA_dimred_patients_FLOW_rWGNCA.pdf"),
+  mapping_table = file.path(base_dir, "All_mapping_dimred_patients_FLOW_rWGNCA.txt"),
+  heatmap = file.path(base_dir, "heatmap_new.pdf")
+)
+
+# ---- Load and align data ----
+module_df <- read.delim(files$eigenvectors, check.names = FALSE)
+
+# The original workflow dropped column 2 from the exported eigenvector table.
+# Keep that behaviour here, but make it explicit.
+if (ncol(module_df) < 3) {
+  stop("The eigenvector table has fewer than 3 columns; cannot drop the non-module column used in the original workflow.")
 }
-add.alpha <- function(col, alpha=1){
-  if(missing(col))
-    stop("Please provide a vector of colours.")
-  apply(sapply(col, col2rgb)/255, 2, 
-        function(x) 
-          rgb(x[1], x[2], x[3], alpha=alpha)) }
 
-###########
-out_dir = "~/Library/CloudStorage/OneDrive-Nexus365/DPhil Project/Ageing/FLOW/FLOW_final_matrices/"
-batch = "FLOW_rWGNCA"
-##############
-file = concat(c(out_dir, "Eigenvectors_BCR_FLOW_BCR.txt"))
-p <- as.matrix(read.csv(file, head=TRUE, sep="\t"))
-mat = p
-heatmap(p)
-p <- p[,-c(2)]
+# Use the first column as sample ID when it is not already stored as row names.
+if (is.null(rownames(module_df)) || all(rownames(module_df) == as.character(seq_len(nrow(module_df))))) {
+  rownames(module_df) <- module_df[[1]]
+}
 
-###load age and other metadata
-file = concat(c(out_dir,"File information.txt"))
-p1 <- as.matrix(read.csv(file, head=TRUE, sep="\t"))
-df1 = data.frame(p1)
-library(dplyr)
-df1 <- df1 %>% mutate(age_group = as.numeric(as.character("Age.at.visit")),
-                      age_group = case_when(
-                        between(age_group, 20, 40.9) ~ "20-40",
-                        between(age_group, 41, 60.9) ~ "40-60",
-                        between(age_group, 61, 80.9) ~ "60-80",
-                        age_group >= 81 ~ "80+",
-                        TRUE ~ NA_character_))
+module_df <- module_df[, -2, drop = FALSE]
+module_matrix <- module_df %>%
+  mutate(across(everything(), ~ as.numeric(as.character(.x)))) %>%
+  as.matrix()
+rownames(module_matrix) <- rownames(module_df)
+module_matrix <- module_matrix[order(rownames(module_matrix)), , drop = FALSE]
 
-rownames(df1) <- df1$Sequencing.ID
-p <- p[ order(row.names(p)), ]
-df1 <- df1[ order(row.names(df1)), ]
-## check 
-rownames(df1) == rownames(p)
-df1$cell_type <- df1$Population
-mat=p
+metadata <- read.delim(files$metadata, check.names = FALSE) %>%
+  as.data.frame(stringsAsFactors = FALSE) %>%
+  mutate(
+    age_numeric = as.numeric(`Age.at.visit`),
+    age_group = case_when(
+      between(age_numeric, 20, 40.9) ~ "20-40",
+      between(age_numeric, 41, 60.9) ~ "40-60",
+      between(age_numeric, 61, 80.9) ~ "60-80",
+      age_numeric >= 81              ~ "80+",
+      TRUE                           ~ NA_character_
+    )
+  )
 
+rownames(metadata) <- metadata$Sequencing.ID
+metadata <- metadata[order(rownames(metadata)), , drop = FALSE]
+
+common_ids <- intersect(rownames(module_matrix), rownames(metadata))
+module_matrix <- module_matrix[common_ids, , drop = FALSE]
+metadata <- metadata[common_ids, , drop = FALSE]
+stopifnot(identical(rownames(module_matrix), rownames(metadata)))
+
+analysis_df <- cbind(
+  metadata,
+  as.data.frame(module_matrix, check.names = FALSE)
+)
+analysis_df$cell_type <- analysis_df$Population
+
+# ---- Panel B: sample projection plot ----
 
 Plot_dimred_for_patients<-function(p){
   library(umap)
@@ -126,93 +138,100 @@ Plot_dimred_for_patients<-function(p){
 }
 Plot_dimred_for_patients(p)
 
-        
-###heatmap
-genotype_colors <- c("Minor Hom." = "#1B9E77", "Major Hom." = "#D95F02", "Not Significant" = "#F0F0F0")
-genotype_colors <- c("Minor Hom. (TT)" = "#1B9E77", "Major Hom. (II)" = "#D95F02", "Not Significant" = "#F0F0F0") # Green and Orange from Set2, Off-White
 
-library(dplyr)
-library(tidyr)
-library(ggplot2)
-
-all_population_results <- df1 %>%
-  group_by(Population) %>%
-  group_map(function(pop_data, pop_info) {
-    population_name <- pop_info$Population
-    
-    # Pivot longer and extract numeric part of module
-    df_long <- pop_data %>%
-      pivot_longer(
-        cols = starts_with("Module_"),
-        names_to = "Module",
-        values_to = "Module_Score"
-      ) %>%
-      mutate(Module_num = as.integer(gsub("Module_", "", Module)))  # numeric version
-    
-    # ANOVA
-    anova_results <- df_long %>%
-      group_by(Module, Module_num) %>%
-      do(model = aov(Module_Score ~ Genotype, data = .)) %>%
-      mutate(p.value = summary(model)[[1]][["Pr(>F)"]][1]) %>%
-      dplyr::select(Module, Module_num, p.value)
-    
-    # BH correction
-    bh_adjusted_results <- anova_results %>%
-      mutate(padj = p.adjust(p.value, method = "BH"))
-    
-    # Mean scores + significance calls
-    significant_results <- df_long %>%
-      group_by(Module, Module_num, Genotype) %>%
-      summarise(mean_score = mean(Module_Score, na.rm = TRUE), .groups = "drop") %>%
-      pivot_wider(names_from = Genotype, values_from = mean_score) %>%
-      left_join(bh_adjusted_results, by = c("Module", "Module_num")) %>%
-      mutate(Significance = case_when(
-        padj < 0.05 & !is.na(`Minor Hom. (TT)`) & !is.na(`Major Hom. (II)`) & `Minor Hom. (TT)` > `Major Hom. (II)` ~ "Minor Hom. (TT)",
-        padj < 0.05 & !is.na(`Minor Hom. (TT)`) & !is.na(`Major Hom. (II)`) & `Major Hom. (II)` > `Minor Hom. (TT)` ~ "Major Hom. (II)",
-        TRUE ~ "Not Significant"
-      )) %>%
-      dplyr::select(Module, Module_num, Significance, padj) %>%
-      mutate(Population = population_name)
-  }) %>%
-  bind_rows()
-
-# Get ordered Module names + numbers
-module_lookup <- all_population_results %>%
-  distinct(Module, Module_num) %>%
-  arrange(Module_num)
-
-# Ensure all Module-Population combinations are present, keep Module_num
-all_combinations <- expand_grid(
-  module_lookup,
-  Population = unique(df1$Population)
-)
-
-# Build heatmap data with numeric ordering
-heatmap_matrix_data <- all_combinations %>%
-  left_join(all_population_results, by = c("Module", "Module_num", "Population")) %>%
-  replace_na(list(Significance = "Not Significant", padj = 1)) %>%
-  mutate(Module = reorder(Module, Module_num))   # enforce numeric order
-
-# Create the matrix heatmap
-matrix_heatmap_plot <- ggplot(heatmap_matrix_data, aes(y = Population, x = Module, fill = Significance)) +
-  geom_tile(color = "black") +
-  scale_fill_manual(values = genotype_colors, name = "Significantly Higher In (BH)") +
-  labs(
-    y = "Population",
-    x = "Module",
-    title = "Module Score Significance Across Populations (BH Corrected)"
-  ) +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
-    axis.ticks.y = element_blank()
+# ---- Panel C: genotype effect heatmap across populations ----
+run_population_module_heatmap <- function(analysis_df) {
+  genotype_colors <- c(
+    "Minor Hom. (TT)" = "#1B9E77",
+    "Major Hom. (II)" = "#D95F02",
+    "Not Significant" = "#F0F0F0"
   )
 
-# Display the matrix heatmap
-print(matrix_heatmap_plot)
+  all_population_results <- analysis_df %>%
+    group_by(Population) %>%
+    group_map(function(pop_data, pop_info) {
+      population_name <- pop_info$Population
 
+      long_df <- pop_data %>%
+        pivot_longer(
+          cols = starts_with("Module_"),
+          names_to = "Module",
+          values_to = "Module_Score"
+        ) %>%
+        mutate(Module_num = as.integer(gsub("Module_", "", Module)))
 
-pdf("heatmap_new.pdf", 22, 3)
-matrix_heatmap_plot
-dev.off()
+      anova_results <- long_df %>%
+        group_by(Module, Module_num) %>%
+        do({
+          fit <- aov(Module_Score ~ Genotype, data = .)
+          data.frame(p_value = summary(fit)[[1]][["Pr(>F)"]][1])
+        }) %>%
+        ungroup() %>%
+        mutate(padj = p.adjust(p_value, method = "BH"))
 
+      long_df %>%
+        group_by(Module, Module_num, Genotype) %>%
+        summarise(mean_score = mean(Module_Score, na.rm = TRUE), .groups = "drop") %>%
+        pivot_wider(names_from = Genotype, values_from = mean_score) %>%
+        left_join(anova_results, by = c("Module", "Module_num")) %>%
+        mutate(
+          Significance = case_when(
+            padj < 0.05 & !is.na(`Minor Hom. (TT)`) & !is.na(`Major Hom. (II)`) & `Minor Hom. (TT)` > `Major Hom. (II)` ~ "Minor Hom. (TT)",
+            padj < 0.05 & !is.na(`Minor Hom. (TT)`) & !is.na(`Major Hom. (II)`) & `Major Hom. (II)` > `Minor Hom. (TT)` ~ "Major Hom. (II)",
+            TRUE ~ "Not Significant"
+          ),
+          Population = population_name
+        ) %>%
+        select(Module, Module_num, Significance, padj, Population)
+    }) %>%
+    bind_rows()
+
+  module_lookup <- all_population_results %>%
+    distinct(Module, Module_num) %>%
+    arrange(Module_num)
+
+  heatmap_df <- tidyr::expand_grid(
+    module_lookup,
+    Population = unique(analysis_df$Population)
+  ) %>%
+    left_join(all_population_results, by = c("Module", "Module_num", "Population")) %>%
+    replace_na(list(Significance = "Not Significant", padj = 1)) %>%
+    mutate(Module = factor(Module, levels = module_lookup$Module))
+
+  heatmap_plot <- ggplot(heatmap_df, aes(x = Module, y = Population, fill = Significance)) +
+    geom_tile(color = "black", linewidth = 0.25) +
+    scale_fill_manual(values = genotype_colors, name = "Significantly higher in (BH)") +
+    labs(
+      x = "Module",
+      y = "Population",
+      title = "Module score significance across populations"
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, colour = "black"),
+      axis.text.y = element_text(colour = "black"),
+      axis.ticks.y = element_blank(),
+      panel.grid = element_blank(),
+      legend.title = element_text(face = "bold")
+    )
+
+  ggsave(output_files$heatmap, plot = heatmap_plot, width = 22, height = 3)
+  heatmap_plot
+}
+
+# ---- Helper used in the original plotting workflow ----
+add.alpha <- function(col, alpha = 1) {
+  if (missing(col)) {
+    stop("Please provide a vector of colours.")
+  }
+  apply(sapply(col, col2rgb) / 255, 2, function(x) {
+    rgb(x[1], x[2], x[3], alpha = alpha)
+  })
+}
+
+# ---- Run figure panels ----
+pca_plot <- run_sample_projection(module_matrix, metadata)
+print(pca_plot)
+
+heatmap_plot <- run_population_module_heatmap(analysis_df)
+print(heatmap_plot)
