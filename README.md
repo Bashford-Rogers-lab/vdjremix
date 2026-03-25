@@ -4,7 +4,7 @@
 
 It is designed to address the unique statistical challenges of repertoire summary data, including **high dimensionality, heterogeneous feature types, collinearity, and missingness**, which are not well handled by standard dimensionality reduction approaches.
 
-VDJ-REMIX implements a **network-based modularisation framework**, inspired by Weighted Gene Correlation Network Analysis (WGCNA), but **refactored and optimised specifically for BCR and TCR repertoire feature matrices**.
+VDJ-REMIX implements a **network-based modularisation framework**, inspired by Weighted Gene Correlation Network Analysis (WGCNA), but **refactored and optimised specifically for BCR and TCR repertoire feature matrices** for single and bulk AIRR datasets.
 
 ---
 
